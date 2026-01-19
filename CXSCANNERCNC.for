@@ -1,0 +1,409 @@
+C*****************************************************************
+C                                                                *
+C		CXSCANNERCNC.FOR                                *
+C                                                                *
+C*****************************************************************
+C
+C	THIS PROGRAM SCANS THE DIGITAL INPUT POINTS EVERY SECOND
+C	AND LOADS THE STATUS INTO COMMON /CXSTS/.  IT GETS ITS
+C	DIGITAL POINT NUMBERS FROM THE COMMON SDXR_02
+C
+C	LINK:  CXSCANNERCNC,DIGCOMCNC/OPT,
+C	1  WESAPI_LIB:WESAPI/OPT
+C
+C   REMEMBER:  I FORTRANED AND LINKED COMPTEST_ORACLE AND THEN CALLED
+C	THE EXECUTABLE "COMPTEST" SO THAT I DIDN'T HAVE TO CHANGE THIS
+C	PROGRAM.
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C
+C
+	PROGRAM CXSCANNERCNC
+C
+C
+C	REMEMBER!!!!!!
+C
+C	BOTH CXSCANNERCNCT AND COMPTEST HAVE TO BE STARTED FROM
+C	THE SAME PROCESS!!!!!!!!!!
+C
+C
+C!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+C
+C
+C
+	INCLUDE '($SSDEF)'
+	INCLUDE '($IODEF)'
+	INCLUDE 'WESAPI:SPD.DCL'
+	INCLUDE 'WESAPI:SHC_DEFINES.DCL'
+	INCLUDE 'WESAPI:SHC_ERR.DCL'
+C
+C
+C
+C
+C		contacts for compression tester
+c
+	INTEGER CT(6)/1688,1689,1690,1691,1694,1695/    
+C
+C
+	INTEGER TIMER(2),SYS$BINTIM,SYS$SCHDWK,SYS$HIBER,
+	1	SYS$WAKE,SYS$ASCEFC,SYS$READEF
+C
+	CHARACTER*6 PT*1,PT2,ALARM /'0 ::03'/  ! DELAY TIME
+	CHARACTER RELPR*8/'COMPTEST'/,CLUSTER*3/'CXI'/
+
+C
+	INTEGER CXSTS(100),CN,CV,CR,JJ,
+	2	CXALRM(100),CREP
+C
+C
+	INTEGER*2 BO,J,Q
+C
+	INTEGER SDISTAT(3),RDISTAT(3)
+C
+	LOGICAL PSTAT,LSTAT
+C
+C
+C
+	INTEGER SYSID(1906),pack
+C
+C
+CCCCCCCCCCCCCCCCCCC
+C
+C
+	INTEGER*4	LIB$SYS_TRNLOG
+	INTEGER*4	i
+	CHARACTER*10 	choice
+	INTEGER*4 	status
+	CHARACTER*20	highway
+
+	CHARACTER*40    spd_filename
+	INTEGER*2	spd_filename_len
+	INTEGER*2	spd_fd
+	INTEGER*2	access_type
+C
+	integer		sid
+C
+C  Case 3 variables
+	INTEGER*4       gp_sid
+	BYTE		gp_bitnum 
+	INTEGER*2	digital_val
+	INTEGER*2	digital_stat
+c
+c
+	BYTE		extended_flag
+	BYTE		gp_bit_num
+        BYTE		inactive_flag
+c
+c  Case 5 variables
+	INTEGER*2	get_pkd_group_val
+	INTEGER*2	get_pkd_group_stat
+	INTEGER*2	gp_force_stat
+c
+c  Case 10 variables
+	INTEGER*2	gp_op_mask
+	INTEGER*2	gp_val_mask
+c
+c
+c
+	CHARACTER APT*8
+c
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C
+C
+C
+	COMMON  /CONTACTSCNC/CXSTS,/CXALARMCNC/CXALRM  !common that this prog. 
+C
+C
+C
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C  Use the wesapi highway number to form the name of the wesapi logical that
+C  names the point directory file and get the file name from the logical
+C
+           status = LIB$SYS_TRNLOG('WESAPI_PDIR_4',
+	1		spd_filename_len,spd_filename,,,)
+C
+        IF (status .NE. SS$_NORMAL) THEN
+	   PRINT *, '  Logical WESAPI_PDIR not defined'
+	   stop 'no point dir'
+        ENDIF
+C
+C
+C
+C  Put a NULL character (0) at the end of the file name string.  This is
+C  necessary because the spd library functions expect string arguments
+C  to be NULL terminated strings.
+	spd_filename(spd_filename_len+1:) = CHAR(0)
+
+C  Call the spd open file function to get access to the point directory file
+        access_type = RUNTIME
+        spd_fd = SPD_open_file(%ref(spd_filename), access_type)
+        IF (spd_fd .LT. 0) THEN
+           PRINT *,'  SPD_open_file() Error : ',spd_fd
+           STOP
+  	ENDIF
+
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C!writes to 
+		PASS=0
+C
+	DO 28 I=1,3
+		SDISTAT(I)=0
+		RDISTAT(I)=0
+28	CONTINUE
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C	  READ IN CX POINT NOS. FROM CXICNC.SRC
+C
+	OPEN (UNIT=50,FILE='USER_D:[RJM]CXICNC.SRC',STATUS='OLD',
+	1	SHARED,READONLY)
+C
+	JJ=0
+	KK=1
+C
+	DO WHILE (JJ .EQ. 0)
+54		READ (50,755,IOSTAT=JJ,ERR=1313) APT
+755		FORMAT (A)
+		IF (APT(1:1) .LT. '0') GO TO 54
+c
+c
+C  Call the get sid function.  The point name argument must have a NULL (0)
+C  at the end.
+           status = SPD_get_sid(spd_fd, %ref(apt//char(0)), sid,
+	1		gp_sid, gp_bit_num, extended_flag, inactive_flag)
+c
+	SYSID(KK)=SID
+	KK=KK+1
+c
+	END DO
+C
+1313	CLOSE (50)
+c
+ccccccccccccccccc
+c
+	apt='GP400020'
+c
+c	get the sid for the packed digital output to the compression tester
+c
+           status = SPD_get_sid(spd_fd, %ref(apt//char(0)), pack,
+	1		gp_sid, gp_bit_num, extended_flag, inactive_flag)
+c
+ccccccccccccccccc
+c
+c
+c
+c
+c
+C  Close the point directory file 
+           status = SPD_close_file(spd_fd)
+           IF (status .NE. 0) THEN
+    	      PRINT *,'  SPD_close_file() Error : ', status
+	      STOP
+	   ENDIF
+c
+c
+C	status = SHC_open_memory()
+C	IF (status .NE. SHC_OK) THEN
+C	   PRINT *,' SHC open memory failure - error = ',status
+C	   STOP
+C	ENDIF
+c
+c
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C	SCHEDULING A 1 SECOND WAKEUP REQUEST
+C
+C       CONVERT ASCII TIME TO BINARY
+C
+	STATUS=SYS$BINTIM (ALARM,TIMER)   
+C
+C	SCHEDULE WAKEUP
+C
+	STATUS=SYS$SCHDWK (,,TIMER,TIMER)
+	IF (.NOT. STATUS) CALL LIB$SIGNAL (%VAL(STATUS))
+C
+C
+C
+C
+C
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C		TOGGLE CX TO HOLD ALL 3 COMPRESSION TESTERS
+C
+C
+221	gp_op_mask=1
+c
+c	get current status
+c
+	status=SHC_get_pkd_group_val_stat (pack,get_pkd_group_val,
+	1	get_pkd_group_stat,gp_force_stat)
+c
+c
+	IF (BITEST(get_pkd_group_val,0)) THEN
+		gp_val_mask=0
+		status=SHC_put_pkd_group_val(pack,gp_op_mask,gp_val_mask)
+	ELSE
+		gp_val_mask=1
+		status=SHC_put_pkd_group_val(pack,gp_op_mask,gp_val_mask)
+	END IF
+c
+c
+C	
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C
+C
+C
+	PASS=0
+C
+	CREP=0   ! INCREASES IF POINTS ARE IN ALARM
+C
+C
+C
+C
+	DO 1010 JJ=1,1906
+C
+	CV=JJ/32+1
+	CR=MOD(JJ,32)
+C
+	LSTAT=.FALSE.
+	PSTAT=.FALSE.
+C
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+C  Call the get digital value and status function.
+	gp_sid=0
+	gp_bitnum=0  
+	status = SHC_get_digital_val_stat( SYSID(JJ), gp_sid, gp_bitnum,
+	1		digital_val, digital_stat)
+C  Print the information returned from SHC_get_digital_val_stat
+C           IF (status .ne. SHC_OK) THEN
+C   	      write (302,*)digital_val,digital_val,digital_stat,digital_stat
+C302	      FORMAT ('*** digital value = ',0xZ4.4,I8,
+C	1	' -- digital status = 0x',Z4.4,I8)
+C	   ENDIF
+C
+C
+1314	CONTINUE
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c
+c
+c
+	IF (BJTEST(CXSTS(CV),CR)) LSTAT=.TRUE.  !SEE IF BIT SET IN STATUS
+C
+C
+C		check if contact is closed in common
+C
+		IF (BITEST(digital_val,0)) THEN
+		CXSTS(CV)=JIBSET(CXSTS(CV),CR)		! SET BIT
+		PSTAT=.TRUE.
+C
+		ELSE
+C
+C		contact is open, reset bit in status word
+C
+		CXSTS(CV)=JIBCLR(CXSTS(CV),CR)		! CLEAR BIT
+		END IF
+C
+C
+C
+C
+	IF  (PSTAT .NEQV. LSTAT) THEN	!CHECK IF ANY CXS CHANGED
+C
+C		IF SO, SET BIT IN CXALRM TABLE
+C
+	CXALRM(CV)= JIBSET(CXALRM(CV),CR)
+	CREP=CREP+1
+	END IF
+C
+1010	CONTINUE
+C
+C
+C
+C	   ----	SECTION TO SEE IF 'COMPTEST' HAS TO BE TURNED ON ----
+C
+C
+C
+	DO 55 K=1,6
+C
+		IF (K .LE. 2) THEN
+			MM=1
+		ELSE IF (K .GE. 3 .AND. K .LE. 4) THEN
+			MM=2
+		ELSE IF (K .GE. 5 .AND. K .LE. 6) THEN
+			MM=3
+		END IF
+C
+C
+		CV=CT(K)/32+1
+		CR=MOD(CT(K),32)
+C
+		IF (K .EQ. 1 .OR. K .EQ. 3.OR.K.EQ.5) THEN   ! IS THIS AN SDI?
+C
+			II=0    ! check state of SDI
+C
+			IF (BJTEST(CXSTS(CV),CR)) II=1
+c
+			IF (SDISTAT(MM) .EQ. II) GO TO 55 ! no change to SDI
+C
+C
+C		  ----- SDI HAS CHANGED STATE ------
+C
+			SDISTAT(MM)=II	! save latest cx state
+C
+			STATUS=SYS$WAKE (,RELPR) ! turn on comptest
+C
+			GO TO 55
+C
+		END IF
+C
+C
+C				RDI TEST
+C
+		IF (K .EQ. 2  .OR.  K .EQ. 4 .OR. K .EQ. 6) THEN
+C
+			II=0    ! check state of RDI
+C
+			IF (BJTEST(CXSTS(CV),CR)) II=1
+C
+			IF (II .EQ. 0) THEN
+				RDISTAT(MM)=II
+				GO TO 55
+			END IF
+C
+C				rdi is energized
+C
+			IF (RDISTAT(MM) .EQ. II) GO TO 55
+C
+C
+C		-----  RDI HAS CHANGED STATE ------
+C
+			RDISTAT(MM)=II
+C
+			STATUS=SYS$WAKE (,RELPR) ! turn on comptest
+C
+			GO TO 55
+C
+C
+		END IF
+C
+C
+C
+55	CONTINUE
+C
+C
+C
+C
+C
+C
+C
+C
+200	STATUS=SYS$HIBER ()
+	IF (.NOT. STATUS) CALL LIB$SIGNAL (%VAL(STATUS))
+C
+	GO TO 221   	! RETURN TO START OF PROGRAM
+C
+	END                                                                  
+                   
