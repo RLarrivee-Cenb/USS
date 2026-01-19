@@ -1,0 +1,1539 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C	CONFIDENTIAL
+C	Property of United States Steel Corporation
+C	Copyright 2010 United States Steel Corporation
+C	All rights reserved.
+C******************************************************************************
+C		MT3_POTTS_NEW716.FOR
+C **compile using the /old_f77 switch in the for command**
+C******************************************************************************
+C Revisions:
+C	PM651556 20080129 JOH8811 Show pellet tons for entire shift when
+C		entering chemicals (this is done during 2nd half of shift).
+C
+C	IM322852 20100706 SPA6635 add %<300 compression
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+	EXTERNAL UFO_OPEN
+	INCLUDE '($PRCDEF)'
+	INCLUDE 'FMS$EXAMPLES:FDVDEF'
+C
+C******************************************************************************
+C
+	INTEGER*2 MEM/"276/,GROUP/"100/
+	REAL 	MINB/85./,MAXB/100./, !min and max before tumbles
+	1	MINA/75./,MAXA/100./ !min and max after tumbles
+C
+C
+	DOUBLE PRECISION BTMIN2,ATMIN2,BTMIN3,ATMIN3,BTMIN,ATMIN,
+	1	BTFA(2)/97.0,97.5/,ATFA(2)/95.0,95.0/,
+C
+	1	SILLIML2,SILLIMH2,BALIML2,BALIMH2,COLIML2,COLIMH2,
+	1	SILLIML3,SILLIMH3,BALIML3,BALIMH3,COLIML3,COLIMH3
+C
+C******************************************************************************
+C
+	INTEGER*2  KEYTABLE(12)/FDV$K_KF_NTR,FDV$K_KF_NONE,
+	1		       	FDV$K_KF_NXT,FDV$K_KF_NONE,
+	1		       	FDV$K_KF_NXT,107,
+	1			fdv$k_kf_nxt,1037,
+	1			fdv$k_kf_ntr,235,
+	1			FDV$K_KF_NTR,269/
+C******************************************************************************
+C
+	INTEGER  WORKSPACE( 3 ),	!General workspace
+	1	 CHECKWKSP( 3 ),	!Check workspace
+	2	 TCA( 3 ),		!Terminal Control Area
+    	3	 GASN_FORM(500),	!Storage for memory resident form
+    	4	 GASD_FORM(750) 	!Storage for memory resident form
+C
+C
+C	IM322852 change comp2 from (2,3,2,5) to (3,3,2,5) for %<300# comp  
+ 	DOUBLE PRECISION CT(18),FT(18),SCREEN(14,3,2,5),COMP(2,3,2,5),
+	1  CAB(2,3,5),SIL(3,5),FILT2(5,3),BL2,FILT3(5,3),BL3,TOTAL,
+	1  H2O,RMF,FTMF,BOIC(150),HOIC(150),CX(5),MX(5),AX(5),SX(5),
+	1  FLUXG,P34,P12,FCA(2,3),FMG(2,3),FAL(2,3),FSI(2,3),
+	1  PA(3,5),PC(3,5),PM(3,5),SCWT(3,2,5),SCREEX(14,3,2,5),
+	1  WWT(5),TONS4(3,2,5),GHRS(3,2,5),COMP2(3,3,2,5)
+C
+	integer flag/64/,BADTUMBLE
+c
+	INTEGER AMB(3),BMH(3),BD(2),YSTRDAY(2),NEW(3),LAST(3),
+	1	IN,INO,DAT(2),INTV(2),IS,IS2,IS3,IH,S4,H4
+C
+	DIMENSION ARD(8)
+C
+	CHARACTER PL(2)*2/'CN','AG'/,FN2*25,a7*7,
+	1	MO(12)*3/'JAN','FEB','MAR','APR',
+	2	'MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'/
+	3	,CAD*9,FILN*16,SH*2,TEMP*12,MINP,AINTV/'1'/,
+	1	INAM(4)*6/'AMIOIC','BMIOIC',' AMBOP',' BMHOP'/,  
+	1	PART(3)*16/'SCREEN FRACTIONS','       SIO2     ',
+	2	'FILTER CAKE     '/,AYSTR*23,FILNAM*30,ASC2*3,
+	1	PP1*29/'SCREEN FRACTIONS,COMPRESSIONS'/,KD*8,AAT*80,
+	1	AALN 
+C
+	CHARACTER SHED*32/'+5/8,+1/2,+3/8,+1/4,4M,+28M,-28M'/,
+C
+	2	CHED*38/'COMPRESSION AVG., -200 PCT.'/,
+C
+	2	BHED*18 /'AL203,CAO,MGO'/,
+	2	BHEX*18 /'SIO2,AL203,CAO,MGO'/,
+C
+	3	FES*4/'SIO2'/,
+C
+	4	FILT*26/'SIO2,-270,-500,AL2O3,CAO,MGO'/,
+C
+	5	BAT(2)*6/'BEFORE','AFTER '/,PRES*23,TESTKEY*8,
+C
+	1	MNTH(12)*3/'JAN','FEB','MAR','APR','MAY','JUN','JUL',
+	1'AUG','SEP','OCT','NOV','DEC'/,TDAY*11,YDAY*11,KY*8,AD*23,ascr,
+	1KY6*6
+C
+	INTEGER D2,EXIST,LS,LH
+C
+	CHARACTER ASC*10,ASCSV*10,cb*5,ca*5,FFKEY*7
+C
+C
+C	   structure for GRAD1
+C
+	STRUCTURE /SCREEN1/
+		UNION
+			MAP
+				CHARACTER SC*3000
+			END MAP
+C
+			MAP
+				CHARACTER SH*13,DAT*6,SHIF,HLF
+C				CHARACTER L3(4)*5,L4(4)*5,L5(4)*5,L6(4)*5,
+C	1					L7(4)*5
+				CHARACTER L3(5)*5,L4(5)*5,L5(5)*5,L6(5)*5,
+	1					L7(5)*5
+				CHARACTER CHT
+			END MAP
+		END UNION
+C
+	END STRUCTURE
+C
+C
+	RECORD /SCREEN1/ MAP1
+
+C	   structure for GRAD2
+C
+	STRUCTURE /SCREEN2/
+		UNION
+			MAP
+				CHARACTER SC*3000
+			END MAP
+C
+			MAP
+				CHARACTER SH*13,DAT*6,SHIF,HLF
+C				CHARACTER L3(8)*5,L4(8)*5,L5(8)*5,L6(8)*5,
+C	1					L7(8)*5
+				CHARACTER L3(9)*5,L4(9)*5,L5(9)*5,L6(9)*5,
+	1					L7(9)*5
+C
+				CHARACTER F2(6)*5,F3(6)*5,
+	1     				  STONE*4,FFS*5,FF2*6
+				CHARACTER*4 FFAL,FFCA,FFMG,FFMN
+				CHARACTER FCSIL*5
+				CHARACTER*6 FC270
+				CHARACTER*4 FCAL,FCCA,FCMG,FCMN
+				CHARACTER   CHT
+C
+			END MAP
+C
+		END UNION
+C
+	END STRUCTURE
+C
+C
+	RECORD /SCREEN2/ MAP2
+C
+C
+C	   structure for GRAD3
+C
+	STRUCTURE /SCREEN3/
+		UNION
+			MAP
+				CHARACTER SC*1200
+			END MAP
+C
+			MAP
+C
+	CHARACTER 
+	1	WT(5)*5,BT3(6)*5,AT3(6)*5,BT4(6)*5,AT4(6)*5,BT5(6)*5,AT5(6)*5
+	1	,BT6(6)*5,AT6(6)*5,BT7(6)*5,AT7(6)*5,TONS4(5)*7,GHRS(5)*5,END
+			END MAP
+C
+		END UNION
+C
+	END STRUCTURE
+C
+C
+	RECORD /SCREEN3/ MAP3
+C
+	STRUCTURE /BOB/
+		CHARACTER	DATE*6		!YYMMDD		KEY 0
+		REAL		TONS(24,7)
+		REAL		HOURS(24,7)
+	END STRUCTURE
+C
+	RECORD /BOB/ DDAT,TZ
+C	  this structure is in MMC.DAT, the key is a descending string
+	STRUCTURE /XX/
+		CHARACTER DATE*7/'       '/	!YYMMDDS    key 0
+		REAL	  FFDATA(4)	! AL2O3,CAO,MGO,MNO
+		REAL	  FCDATA(7)	!SIL,AL,CAL,MG,MN,-270
+		REAL	  BENT(5)	!BENTONITE LBS/TON BY LINE
+		REAL	  CTONS         !CRUSHER SCANNER TONS
+		REAL 	  CSIL          !MINE IND. SILICA
+		REAL	  CMF           !MINE IND. MAG FE
+		REAL	  CWTR          !MINE PREDIC. RECOVERY
+		REAL	  CA            !MINE "A" FACTOR
+		REAL	  CT            !AVG. COARSE TAILS
+		REAL	  FT            !AVG. FINE TAILS
+		REAL 	  FR		!FROTH REGRIND % OP TIME
+		REAL	  AM		!AMINE LBS/TON
+	END STRUCTURE
+C
+	RECORD /XX/ FFD
+C
+	real BFT(5),AFT(5)
+	character LMSG*80
+C******************************************************************************
+	INCLUDE 'MET_P:MATERIAL.FOR'	! flux or acid check
+C
+	IF (FTNFFB) THEN
+		BTMIN2=BTFA(1)
+		ATMIN2=ATFA(1)
+		SILLIML2=3.73
+		SILLIMH2=4.27
+		BALIML2=.98
+		BALIMH2=1.22
+		COLIML2=200.
+	ELSE
+		BTMIN2=BTFA(2)
+		ATMIN2=ATFA(2)
+		SILLIML2=5.04
+		SILLIMH2=5.76
+		BALIML2=0
+		BALIMH2=0
+		COLIML2=200.
+	END IF
+C
+	IF (FTNFFH) THEN
+		BTMIN3=BTFA(1)
+		ATMIN3=ATFA(1)
+		SILLIML3=3.73
+		SILLIMH3=4.27
+		BALIML3=.98
+		BALIMH3=1.22
+		COLIML3=200.
+	ELSE
+		BTMIN3=BTFA(2)
+		ATMIN3=ATFA(2)
+		SILLIML3=5.04
+		SILLIMH3=5.76
+		BALIML3=0
+		BALIMH3=0
+		COLIML3=200.
+	END IF
+C
+464	CALL FDV$ATERM( %DESCR(TCA),12 ,2)
+	CALL FDV$AWKSP( %DESCR(WORKSPACE), 2000 )
+	CALL FDV$LOPEN( 'user_d:[METREP.LAB45]LABSUB', 1 )
+
+	CALL FDV$SPON ()
+	CALL FDV$DFKBD (%DESCR(KEYTABLE),6)
+	CALL SYS$BINTIM (AINTV,INTV) !convert 24 hr interval to binary
+
+36	OPEN (UNIT=99,FILE='MET_P:TANDH_BY_DAY.DAT',STATUS='OLD',
+	1	ACCESS='KEYED',SHARED,IOSTAT=MM)
+C
+	IF (MM .EQ. 52) THEN
+		CALL LIB$WAIT (1.)
+		GO TO 36
+	END IF
+C
+	OPEN (11,FILE='MET_SCREEN:SCREEN.DAT',
+	1	ACCESS='KEYED',STATUS='old',shared)
+C
+	AGL=0
+C******************************************************************************
+C		 AGGLOMERATOR INPUT
+C******************************************************************************
+C	 bring in LAB7.DAT to get date,shift, half in ascii of last entry
+c
+	OPEN (UNIT=10,FILE='USER_D:[METREP.LAB45]LAB7.DAT',STATUS='OLD',
+	1ACCESS='DIRECT',FORM='FORMATTED',SHARED)
+C
+	READ(10,55,REC=1)KY6,LS,LH
+55	FORMAT (A6,I1,I1)
+C
+	KY='19'//KY6
+	IF (KY6(1:2) .lt. '66') KY='20'//KY6
+C
+	IF ((LS .EQ. 3) .AND. (LH .EQ. 2)) THEN
+C
+		AD(7:11)='-'//KY(1:4)
+		READ (KY(5:6),'(I2)')MV
+		AD(3:6)='-'//MNTH(MV)
+		AD(1:2)=KY(7:8)
+		ad(12:23)='            '
+C
+		CALL SYS$BINTIM (AD,BD)
+		CALL LIB$ADD_TIMES (BD,INTV,BD)
+		CALL SYS$ASCTIM (,AD,BD,)
+		IF (AD(1:1) .EQ. ' ') AD(1:1)='0'
+C
+		DO 91 I=1,12           
+			IF (MNTH(I) .EQ. AD(4:6)) GO TO 191
+91		CONTINUE
+C
+C
+		STOP ' MONTH ERROR'
+C
+191		WRITE (KY(5:6),'(I2)') I
+		IF (KY(5:5) .EQ. ' ') KY(5:5)='0'
+C
+		
+		KY(1:4)=AD(08:11)
+		KY(7:8)=AD(1:2)
+C
+		LS=1
+		LH=1
+C
+		KY6=KY(3:8)
+C
+	ELSE
+C
+		IF (LH .EQ. 2) THEN
+			LS=LS+1
+			LH=1
+		ELSE
+			LH=2
+		END IF
+C
+	END IF
+C
+C	 SET UP KEY FOR FLOT FEED & CONC FILE.
+C
+	WRITE (FFKEY(7:7),'(I1)') LS
+	FFKEY=KY(3:8)//FFKEY(7:7)
+C
+	NOPREV=1  !if 1, a previous shift was NOT asked for.
+
+	CALL FDV$CDISP ('GRAD')
+C
+1	AGL=1                           
+	READ (11,KEY=KY,IOSTAT=MMM) KD,DAT,IS,IH,SCREEN,COMP,CAB,SIL,FILT2,
+	1			    FILT3,BL2,BL3,FLUXG,FCA,FMG,FAL,FSI,   
+	1			    PA,PC,PM,S4,H4,SCWT,TONS4,GHRS,COMP2
+C                                   
+	NEWNEW=0
+	IF (MMM .EQ. 36) NEWNEW=1
+c
+	if (newnew .eq. 1 .and. noprev .eq. 0) then
+	call fdv$putl ('data does NOT EXIST for requested time')
+	call lib$wait (2.)
+	go to 99
+	end if
+c
+c
+		KD=KY
+		AD(7:11)='-'//KY(1:4)
+		READ (KY(5:6),'(I2)')MV
+		AD(3:6)='-'//MNTH(MV)
+		AD(1:2)=KY(7:8)
+		ad(12:23)='            '
+		CALL SYS$BINTIM (AD,DAT)
+C
+	IF (MMM .EQ. 52) THEN
+C
+		CALL FDV$PUTL (' 4TH FLOOR LAB HAS THE FILE OPEN')
+		CALL LIB$WAIT (3.)
+		GO TO 99
+C
+	END IF                                  
+C
+	ASC(1:2)=KY(5:6)
+	ASC(3:4)=KY(7:8)
+	ASC(5:6)=KY(3:4)
+C
+	ASCSV=ASC
+	CALL FDV$PUT (ASC(1:6),'DATE')
+	WRITE (ASC,'(I1)') LS
+	CALL FDV$PUT (ASC(1:1),'SHIFT')
+	WRITE (ASC,'(I1)') LH
+	CALL FDV$PUT (ASC(1:1),'HALF')
+C
+	if (noprev .eq. 0) go to 111
+C
+	CALL FDV$GET (ASC,LX,'R1')
+C
+	IF ((ASC(1:1) .EQ. 'Y') .OR. (ASC(1:1) .EQ. 'y')) go to 111
+	IF ((ASC(1:1) .EQ. 'A') .OR. (ASC(1:1) .EQ. 'a')) go to 99
+
+C******************************************************************************
+c	    operator desires a previous date or shift
+C
+	CALL FDV$SPOFF 	! allow entry to date,shift, half
+c
+5222	CALL FDV$GET (ASC,X,'DATE')
+C
+	IF (ASC(1:2) .GT. '12'.or.ASC(3:4).LT.'01') GO TO 5222
+	IF (ASC(3:4) .GT. '31'.or.ASC(1:2).LT.'01') GO TO 5222
+	if (asc(5:6) .lt. '66') then
+		KY(1:4)='20'//ASC(5:6)
+	else
+		KY(1:4)='19'//ASC(5:6)
+	END IF
+C
+	KY(5:6)=ASC(1:2)
+	KY(7:8)=ASC(3:4)
+
+C******************************************************************************
+C	  make sure date is less than or equal to present date
+C******************************************************************************
+	CALL SYS$ASCTIM (,PRES,,)
+	IF (PRES(1:1) .EQ. ' ') PRES(1:1)='0'
+C
+	DO 828 I=1,12
+		IF (PRES(4:6) .EQ. MO(I)) GO TO 829
+828	CONTINUE
+	GO TO 5222 
+C
+829	WRITE (TESTKEY(5:6),'(I2)') I
+	IF (TESTKEY(5:5) .EQ. ' ') TESTKEY(5:5)='0'
+C
+	TESTKEY(1:4)=PRES(08:11)
+	TESTKEY(7:8)=PRES(1:2)
+C
+C
+	IF (KY .GT. TESTKEY) THEN
+	CALL FDV$PUTL ('YOU INPUT A DATE GREATER THAN THE PRESENT DATE')
+	CALL FDV$WAIT
+	GO TO 5222
+	END IF
+C
+C 
+C******************************************************************************
+C
+22	CALL FDV$GET (ASC,X,'SHIFT')
+C
+	READ (ASC(1:1),'(I)') LS
+C
+	IF ((LS .GT. 3) .OR. (LS .LT. 1)) THEN
+			CALL FDV$PUTL('SHIFT OUT OF RANGE')
+			GO TO 22
+	END IF
+C
+C 
+23	CALL FDV$GET (ASC,X,'HALF')
+C
+	READ (ASC(1:1),'(I)') LH
+C
+	IF ((LH .GT. 2) .OR. (LH .LT. 1)) THEN
+			CALL FDV$PUTL('HALF OUT OF RANGE')
+			GO TO 23
+	END IF
+C
+	NOPREV=0  ! reset to indicate a previous shift was requested
+C
+C
+	WRITE (FFKEY(7:7),'(I1)') LS
+	FFKEY=KY(3:8)//FFKEY(7:7)
+C
+C       *Treats supervisor-only fields as display-only fields
+	CALL FDV$SPON()
+	GO TO 1
+C
+CCCCCCCCCCCCCCCCCCCCCC
+C
+111	IF (NOPREV .EQ. 0) THEN
+		ISSAVE=IS
+		IHSAVE=IH
+	END IF
+C
+	IS=LS
+	IH=LH
+C
+C******************************************************************************
+
+77	CALL FDV$CDISP ('GRAD3XX')
+C
+	BADTUMBLE=0
+C
+	ASC(1:2)=KY(5:6)
+	ASC(3:4)=KY(7:8)
+	ASC(5:6)=KY(3:4)
+C
+	CALL FDV$PUT (ASC(1:6),'DATE')
+	WRITE (ASC,'(I1)') LS
+	CALL FDV$PUT (ASC(1:1),'SHIFT')
+	WRITE (ASC,'(I1)') LH
+	CALL FDV$PUT (ASC(1:1),'HALF')
+C
+C		SCREEN FRACTIONS 
+C
+C
+	DO 199 L=1,6
+C
+	IF (SCREEN(3,IS,IH,1) .LE. 0) GO TO 270
+	LLL=SCREEN(L,IS,IH,1)
+	WRITE (ASC,'(I5)',err=470) LLL 
+	CALL FDV$PUT (ASC,'B3',L)
+C
+470	LLL=SCREEN(L+7,IS,IH,1)
+	WRITE (ASC,'(I5)',err=270) LLL
+	CALL FDV$PUT (ASC,'A3',L)
+C
+270	IF (SCREEN(3,IS,IH,2) .LE. 0) GO TO 271
+	LLL=SCREEN(L,IS,IH,2)
+	WRITE (ASC,'(I5)',err=471) lll
+	CALL FDV$PUT (ASC,'B4',L)
+C
+471	LLL=SCREEN(L+7,IS,IH,2)
+	WRITE (ASC,'(I5)',err=271) LLL
+	CALL FDV$PUT (ASC,'A4',L)
+C
+271	IF (SCREEN(3,IS,IH,3) .LE. 0) GO TO 272
+	LLL=SCREEN(L,IS,IH,3)
+	WRITE (ASC,'(I5)',err=472) LLL
+	CALL FDV$PUT (ASC,'B5',L)
+C
+472	LLL=SCREEN(L+7,IS,IH,3)
+	WRITE (ASC,'(I5)',err=272) LLL
+	CALL FDV$PUT (ASC,'A5',L)
+C
+272	IF (SCREEN(3,IS,IH,4) .LE. 0) GO TO 273
+	LLL=SCREEN(L,IS,IH,4)
+	WRITE (ASC,'(I5)',err=473) LLL 
+	CALL FDV$PUT (ASC,'B6',L)
+C
+473	LLL=SCREEN(L+7,IS,IH,4)                                  
+	WRITE (ASC,'(I5)',err=273) LLL
+	CALL FDV$PUT (ASC,'A6',L)
+C
+273	IF (SCREEN(3,IS,IH,5) .LE. 0) GO TO 199
+	LLL=SCREEN(L,IS,IH,5)
+	WRITE (ASC,'(I5)',err=474) LLL
+	CALL FDV$PUT (ASC,'B7',L)
+C
+474	LLL=SCREEN(L+7,IS,IH,5)
+	WRITE (ASC,'(I5)',err=199) LLL
+	CALL FDV$PUT (ASC,'A7',L)
+C
+199	CONTINUE
+C
+C
+	DO 484 I=1,5
+		IF (SCREEN(3,IS,IH,I) .LE. 0) GO TO 484
+C
+		LLL=SCREEN(7,IS,IH,I)
+		WRITE (ASC,'(I5)',err=483) LLL
+		CALL FDV$PUT (ASC,'M28B',I)
+C
+C
+483		LLL=SCREEN(14,IS,IH,I)
+		WRITE (ASC,'(I5)',err=484) LLL
+		CALL FDV$PUT (ASC,'M28A',I)
+484	CONTINUE
+C
+	DO 102 LN=1,5
+C
+	IF (LN .LE. 3) THEN
+		BTMIN=BTMIN2
+		ATMIN=ATMIN2
+	ELSE
+		BTMIN=BTMIN3
+		ATMIN=ATMIN3
+	END IF
+C
+		CALL FDV$PUT('   ','OVER50',LN)
+		CALL FDV$PUT ('     ','CWT',LN)
+		SUM=0
+		ADJW=0
+		DO 101 M=1,6
+101			SUM=SUM+SCREEN(M,IS,IH,LN)
+C
+	IF (SCWT(IS,IH,LN)-SUM .LE. 0) THEN
+C
+		IF (SCWT(IS,IH,LN) .LE. 0) GO TO 1179
+		IF (SUM-SCWT(IS,IH,LN) .GE. 50) CALL FDV$PUT('>50','OVER50',LN)
+C
+1179		ADJW=SUM+SCREEN(7,IS,IH,LN)
+C
+		LW=ADJW
+		WRITE (ASC,'(I5)') LW
+		CALL FDV$PUT (ASC,'CWT',LN)
+C
+	END IF
+C
+		LW=SCWT(IS,IH,LN)
+		WRITE (ASC,'(I5)') LW
+		CALL FDV$PUT (ASC,'WEIGHT',LN)
+C
+C
+C	area to calc bt & at cum +1/4 to display at bottom of screen
+C
+	cuma=0
+	cumb=0
+	ss4b=0
+	do 488 nn1=1,5
+488		ss4b=ss4b+screen(nn1,is,ih,ln)
+C
+	ss4a=0
+	do 489 nn1=8,12
+489		ss4a=ss4a+screen(nn1,is,ih,ln)
+C
+C
+	if (ss4b .le. 0) go to 102
+c
+		SUMM=0
+		DO 5101 M=1,7
+5101			SUMM=SUMM+SCREEN(M,IS,IH,LN)
+c
+	cumb=(ss4b/sumM)*100.
+	BFT(LN)=CUMB
+	cuma=(ss4a/ss4b)*100.
+	AFT(LN)=CUMA
+c
+	write (cb,'(f5.2)',err=2222) cumb
+2222	write (ca,'(f5.2)',err=2223) cuma
+c
+C
+C
+C******************************************************************************C	*display third screen*
+C	   CHECK IF BT AND AT ARE WITHIN SPECS.  REVERSE SCREEN DISPLAY
+C		AND ALARM OPERATOR IF NOT.
+C
+2223	IF (TONS4(IS,IH,LN) .GT. 0 .AND. GHRS(IS,IH,LN) .GT. 0) THEN
+C
+		IF (CUMB .LT. BTMIN) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'CUMB',LN)
+			BADTUMBLE=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'CUMB',LN)
+		END IF
+C
+	END IF
+C
+C
+	CALL FDV$PUT (CB,'CUMB',LN)
+C
+	IF (TONS4(IS,IH,LN) .GT. 0 .AND. GHRS(IS,IH,LN) .GT. 0) THEN
+C
+		IF (CUMA .LT. ATMIN) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'CUMA',LN)
+			BADTUMBLE=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'CUMA',LN)
+		END IF
+C
+C
+	END IF
+C
+C
+	CALL FDV$PUT (CA,'CUMA',LN)
+C
+C******************************************************************************
+C	*display third screen*
+102	CONTINUE
+C
+C
+C******************************************************************************
+C	   display pellet tons by line
+C
+	DO 96 I=1,5
+C
+		WRITE (A7,'(F7.2)',err=425) TONS4(IS,IH,I)
+		go to 426
+425		call fdv$put ('ERROR!','PTONS',I)
+		JJJ=5
+		CALL FDV$AFVA (JJJ,'PTONS',I)
+		GO TO 427
+426		CALL FDV$PUT (A7,'PTONS',I)
+		JJJ=-5
+		CALL FDV$AFVA (JJJ,'PTONS',I)
+427		WRITE (A7,'(F5.2)',ERR=428) GHRS(IS,IH,I)
+		GO TO 429
+428		CALL FDV$PUT ('ERROR!','GHRS',I)
+		JJJ=5
+		CALL FDV$AFVA (JJJ,'GHRS',I)
+		GO TO 96
+429		CALL FDV$PUT (A7,'GHRS',I)
+		JJJ=-5
+		CALL FDV$AFVA (JJJ,'GHRS',I)
+C
+96	CONTINUE
+C
+C******************************************************************************
+	IF (BADTUMBLE .NE. 0) THEN
+	CALL FDV$PUTL ('THERE ARE TUMBLES OUT OF SPEC')
+	CALL FDV$WAIT
+	END IF
+C******************************************************************************
+
+C
+	CALL FDV$SPON ()
+C
+244	II=FDV$GETAL (MAP3.SC,LX,'WEIGHT',1)
+C
+	NOCHANGE=0
+ 	IF (II .NE. FDV$_MOD) GO TO 711
+C******************************************************************************
+C		CHANGES WERE MADE, CHECK SUM OF WEIGHTS AGAINST TOTAL
+C
+	NOCHANGE=1
+C
+	DO 88 JJ=1,6
+	READ (MAP3.BT3(JJ),'(BN,f5.0)') SCREEX(JJ,IS,IH,1)
+	READ (MAP3.AT3(JJ),'(BN,f5.0)') SCREEX(JJ+7,IS,IH,1)
+	READ (MAP3.BT4(JJ),'(BN,f5.0)') SCREEX(JJ,IS,IH,2)
+	READ (MAP3.AT4(JJ),'(BN,f5.0)') SCREEX(JJ+7,IS,IH,2)
+	READ (MAP3.BT5(JJ),'(BN,f5.0)') SCREEX(JJ,IS,IH,3)
+	READ (MAP3.AT5(JJ),'(BN,f5.0)') SCREEX(JJ+7,IS,IH,3)
+	READ (MAP3.BT6(JJ),'(BN,f5.0)') SCREEX(JJ,IS,IH,4)
+	READ (MAP3.AT6(JJ),'(BN,f5.0)') SCREEX(JJ+7,IS,IH,4)
+	READ (MAP3.BT7(JJ),'(BN,f5.0)') SCREEX(JJ,IS,IH,5)
+	READ (MAP3.AT7(JJ),'(BN,f5.0)') SCREEX(JJ+7,IS,IH,5)
+88	CONTINUE
+C
+	DO 602 JJ=1,5
+		READ (MAP3.WT(JJ),'(BN,f5.0)') WWT(JJ)
+602	CONTINUE
+C
+C
+	DO 663 II=1,5
+		READ (MAP3.TONS4(II),'(BN,F7.0)') TONS4(IS,IH,II)
+		READ (MAP3.GHRS(II),'(BN,F5.0)') GHRS(IS,IH,II)
+663	CONTINUE
+C
+	DO 1102 LN=1,5
+C
+		CALL FDV$PUT('   ','OVER50',LN)
+		CALL FDV$PUT ('     ','CWT',LN)
+		SUM=0
+		ADJW=0
+		DO 1101 M=1,6
+1101			SUM=SUM+SCREEX(M,IS,IH,LN)
+C
+	IF (SUM .LE. 0 .OR. WWT(LN) .LE. 0) GO TO 1102
+C
+	IF (WWT(LN)-SUM .LE. 0) THEN
+C
+		IF (SUM-WWT(LN) .GE. 50) CALL FDV$PUT('>50','OVER50',LN)
+C
+		ADJW=SUM+15.
+C
+		SCREEX(7,IS,IH,LN)=15.
+C
+		CALL FDV$PUT ('   15','M28B',LN)
+C
+		LW=ADJW
+		WRITE (ASC,'(I5)') LW
+		CALL FDV$PUT (ASC,'CWT',LN)
+C
+	ELSE
+		SCREEX(7,IS,IH,LN)=WWT(LN)-SUM
+		LW=SCREEX(7,IS,IH,LN)
+		WRITE (ASC,'(I5)') LW
+		CALL FDV$PUT (ASC,'M28B',LN)
+	END IF
+C	   AFTER TUMBLE -28 MESH CALC.
+		SUM=0
+		DO 1105 M=1,6
+1105			SUM=SUM+SCREEX(M+7,IS,IH,LN)
+C
+		SUMP=0
+		DO 1205 M=1,5
+1205			SUMP=SUMP+SCREEX(M,IS,IH,LN)
+C
+C
+		SCREEX(14,IS,IH,LN)=SUMP-SUM
+C
+		LW=SCREEX(14,IS,IH,LN)
+		WRITE (ASC,'(I5)') LW
+		CALL FDV$PUT (ASC,'M28A',LN)
+C
+C******************************************************************************
+c       cum +1/4 calcs.
+C	area to calc bt & at cum +1/4 to display at bottom of screen
+	cuma='     '
+	cumb='     '
+	ss4b=0
+	do 6488 nn1=1,5
+6488		ss4b=ss4b+screeX(nn1,is,ih,ln)
+C
+	ss4a=0
+	do 6489 nn1=8,12
+6489		ss4a=ss4a+screeX(nn1,is,ih,ln)
+C
+C
+	if (ss4b .le. 0) go to 1102
+c
+		SUMM=0
+		DO 6101 M=1,7
+6101			SUMM=SUMM+SCREEX(M,IS,IH,LN)
+c
+	cumb=(ss4b/sumM)*100.
+	BFT(LN)=CUMB
+	cuma=(ss4a/ss4b)*100.
+	AFT(LN)=CUMA
+c
+	write (cb,'(f5.2)',err=6222) cumb
+6222	write (ca,'(f5.2)',err=6223) cuma
+c
+6223	call fdv$put (cb,'cumb',ln)
+	call fdv$put (ca,'cuma',ln)
+C******************************************************************************
+1102	CONTINUE
+C******************************************************************************
+711	CALL FDV$SPOFF ()
+	CALL FDV$PUT ('OK? Y,N,A PUSH PF4','R4')
+C
+	CALL FDV$GET (ASCR,IIT,'R3')
+C
+	IF ((ASCR .EQ. 'N').OR.(ASCR .EQ. 'n')) THEN
+729		CALL FDV$PUT ('                  ','R4')
+		CALL FDV$PUT (' ','R3')
+		CALL FDV$SPON ()
+		 go to 244
+	ELSE IF ((ASCR .EQ. 'Y').OR.(ASCR .EQ. 'y')) THEN
+		CALL FDV$PUT (' ','R3')
+C
+C
+	IF (NOCHANGE .EQ. 1) THEN		! see if any changes were made
+C
+C
+		DO 57 LN=1,5
+		DO 57 I=1,14
+57		SCREEN(I,IS,IH,LN)=SCREEX(I,IS,IH,LN)
+C
+		DO 58 LN=1,5
+58		SCWT(IS,IH,LN)=WWT(LN)
+C
+	END IF
+C******************************************************************************
+c		see if this file already exists.  if so, allow changes
+c
+	IF (NEWNEW .EQ. 0) THEN
+C
+	IF (NOPREV .EQ. 0) THEN
+		IS=ISSAVE
+		IH=IHSAVE
+	END IF
+
+	REWRITE (11) KD,DAT,IS,IH,SCREEN,COMP,CAB,SIL,FILT2,
+	1			    FILT3,BL2,BL3,FLUXG,FCA,FMG,FAL,FSI,   
+	1			    PA,PC,PM,S4,H4,SCWT,TONS4,GHRS,COMP2
+C
+	READ (11,KEY=KY,IOSTAT=MMM) KD,DAT,IS,IH,SCREEN,COMP,CAB,SIL,FILT2,
+	1			    FILT3,BL2,BL3,FLUXG,FCA,FMG,FAL,FSI,   
+	1			    PA,PC,PM,S4,H4,SCWT,TONS4,GHRS,COMP2
+
+c
+	end if
+C
+	ELSE IF ((ASCR .EQ. 'A').OR.(ASCR .EQ. 'a')) THEN
+c
+		go to 99
+c
+C
+	ELSE
+		GO TO 244
+C
+	END IF
+C
+C******************************************************************************
+c	area to see if there are tons but no numbers or numbers but no tons.
+c	check if 1 of the following 2 conditions are met.  If not go
+C	back and redo input
+C******************************************************************************
+c
+	DO 850 LN=1,5
+	IF (TONS4(IS,IH,LN) .GT. 1) THEN
+C			tons are present, see if tumbles are in range
+		IF (BFT(LN) .LT. MINB .OR. BFT(LN) .GT. MAXB) GO TO 127
+		IF (AFT(LN) .LT. MINA .OR. AFT(LN) .GT. MAXA) GO TO 127
+	END IF
+850	CONTINUE
+C
+	GO TO 220	!  everything is ok, continue
+C
+C
+127	WRITE (AALN,'(I1)') LN+2
+	LMSG='LINE '//AALN//' HAS TONS BUT BAD OR MISSING SCREEN FRACTIONS'
+	CALL FDV$PUTL (LMSG)
+	GO TO 729
+C******************************************************************************
+C	COMPRESSION & FILTER CAKE SCREEN
+C******************************************************************************
+220	IS=LS
+	IH=LH
+C
+	IF (LH .EQ. 1) CALL FDV$CDISP('GRAD1P')
+	IF (LH .EQ. 2) CALL FDV$CDISP('GRAD2P')
+C
+C
+C	OPEN STRUKEL'S FLOT CONC AND FEED FILE
+C
+460	OPEN (UNIT=65,FILE='	MET_P:MMC.DAT',ACCESS='KEYED',STATUS='OLD',
+	1		SHARED)
+C
+	read (65,KEY=FFKEY,IOSTAT=JKL) FFD	!get latest record to 
+C					         get latest date-shift
+	ASC(1:2)=KY(5:6)
+	ASC(3:4)=KY(7:8)
+	ASC(5:6)=KY(3:4)
+C
+	CALL FDV$PUT (ASC(1:6),'DATE')
+	WRITE (ASC,'(I1)') LS
+	CALL FDV$PUT (ASC(1:1),'SHIFT')
+	WRITE (ASC,'(I1)') LH
+	CALL FDV$PUT (ASC(1:1),'HALF')
+C******************************************************************************
+C		COMPRESSION AND -200 DATA
+C******************************************************************************
+	DO 201 LN=1,5
+C
+	IF (COMP(1,IS,IH,LN) .LE. 0) GO TO 345
+	WRITE (ASC,'(F5.0)')COMP(1,IS,IH,LN)
+	CALL FDV$PUT (ASC,'COMP',LN)
+C
+	WRITE (ASC,'(F5.2)',ERR=335)COMP(2,IS,IH,LN)
+	CALL FDV$PUT (ASC,'M200',LN)
+C
+335	IF (COMP2(1,IS,IH,LN) .LE. 0) GO TO 345
+	WRITE (ASC,'(F5.0)')COMP2(1,IS,IH,LN)
+	CALL FDV$PUT (ASC,'COMP2',LN)
+C
+ 	WRITE (ASC,'(F5.2)',ERR=345)COMP2(2,IS,IH,LN)
+	CALL FDV$PUT (ASC,'M2002',LN)
+C
+	WRITE (ASC,'(F5.2)',ERR=345)COMP2(3,IS,IH,LN)
+	CALL FDV$PUT (ASC,'M3002',LN)
+C                             
+C PM651556 Show pellet tons
+C
+345		WRITE (ASC,'(F7.2)',ERR=355) TONS4(IS,1,LN)
+ 6		CALL FDV$PUT (ASC,'PTONS1',LN)
+C
+355		WRITE (ASC,'(F7.2)',ERR=201) TONS4(IS,2,LN)
+		CALL FDV$PUT (ASC,'PTONS2',LN)
+C
+C
+201	CONTINUE
+C
+	if ( NOPREV .EQ. 1) GO TO 222
+
+C******************************************************************************
+C		PREVIOUS SHIFT REQUESTED
+C
+C	  check if compression is within limits.
+C******************************************************************************
+	IBAD=0
+C
+	DO 1201 LN=1,5
+C
+	IF (COMP(1,IS,IH,LN) .LE. 0) THEN
+		TONS4(IS,IH,LN)=0
+		GHRS(IS,IH,LN)=0
+		GO TO 1201
+	END If
+C
+	IF (LN .LE. 3) THEN
+		IF (COMP(1,IS,IH,LN) .LT. COLIML2) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	ELSE
+		IF (COMP(1,IS,IH,LN) .LT. COLIML3) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE  
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	END IF
+C
+C
+1201	CONTINUE
+C
+	IF (IBAD .NE. 0) THEN
+	CALL FDV$PUTL ('           A COMPRESSION IS BELOW LOW LIMIT')
+	CALL FDV$WAIT ()
+	END IF
+
+C******************************************************************************
+C	PELLET SIO2,AL,CA,MG
+C******************************************************************************
+
+	DO 210 LN=1,5
+C
+		IF (SIL(IS,LN) .LE. 0) GO TO 210
+C
+		WRITE (ASC,'(F5.2)',ERR=4281) SIL(IS,LN)
+		CALL FDV$PUT (ASC,'SIL',LN)
+C
+4281		WRITE (ASC,'(F5.2)',ERR=4291) PA(IS,LN)
+		CALL FDV$PUT (ASC,'AL',LN)
+C
+4291		WRITE (ASC,'(F5.2)',ERR=4301) PC(IS,LN)
+		CALL FDV$PUT (ASC,'CAO',LN)
+C
+4301		WRITE (ASC,'(F5.2)',ERR=210) PM(IS,LN)
+		CALL FDV$PUT (ASC,'MGO',LN)
+C
+210	CONTINUE
+
+C******************************************************************************
+C	FILTER CAKE
+C******************************************************************************
+
+	DO 230 KL=1,3
+C
+		WRITE (ASC,'(F5.2)',ERR=5141)FILT2(KL,IS)
+		CALL FDV$PUT (ASC,'F2',KL)
+C
+5141		WRITE (ASC,'(F5.2)',ERR=230)FILT3(KL,IS)
+		CALL FDV$PUT (ASC,'F3',KL)
+C
+230	CONTINUE
+C
+C
+	WRITE (ASC,'(F5.2)',ERR=4177) FAL(1,IS)
+	CALL FDV$PUT (ASC,'F2',4)
+C
+	WRITE (ASC,'(F5.2)') FAL(2,IS)
+	CALL FDV$PUT (ASC,'F3',4)
+C
+	WRITE (ASC,'(F5.2)') FCA(1,IS)
+	CALL FDV$PUT (ASC,'F2',5)
+C
+	WRITE (ASC,'(F5.2)') FCA(2,IS)
+	CALL FDV$PUT (ASC,'F3',5)
+C
+	WRITE (ASC,'(F5.2)') FMG(1,IS)
+	CALL FDV$PUT (ASC,'F2',6)
+C
+	WRITE (ASC,'(F5.2)') FMG(2,IS)
+	CALL FDV$PUT (ASC,'F3',6)
+C
+	WRITE (ASC,'(F5.2)',ERR=441) FSI(1,IS)
+	CALL FDV$PUT (ASC,'FFSIL')
+C
+441	WRITE (ASC,'(F6.2)',ERR=442) FSI(2,IS)
+	CALL FDV$PUT (ASC,'FF270')
+C
+442	WRITE (ASC,'(F5.2)') FLUXG
+4177	CALL FDV$PUT (ASC,'STONE')
+C
+C
+C
+C
+	IF (JKL .NE. 0) GO TO 222
+C
+C
+	WRITE (ASC,'(F4.2)',ERR=5566) FFD.FFDATA(1)
+	CALL FDV$PUT (ASC,'FFAL')
+C
+5566	WRITE (ASC,'(F4.2)',ERR=5567) FFD.FFDATA(2)
+	CALL FDV$PUT (ASC,'FFCA')
+C
+5567	WRITE (ASC,'(F4.2)',ERR=5568) FFD.FFDATA(3)
+	CALL FDV$PUT (ASC,'FFMG')
+C
+5568	WRITE (ASC,'(F4.2)',IOSTAT=MM) FFD.FFDATA(4)
+	CALL FDV$PUT (ASC,'FFMN')
+C
+C
+	WRITE (ASC,'(F5.2)',IOSTAT=MM) FFD.FCDATA(1)
+	CALL FDV$PUT (ASC,'FCSIL')
+C
+	WRITE (ASC,'(F4.2)',IOSTAT=MM) FFD.FCDATA(2)
+	CALL FDV$PUT (ASC,'FCAL')
+C
+	WRITE (ASC,'(F4.2)',IOSTAT=MM) FFD.FCDATA(3)
+	CALL FDV$PUT (ASC,'FCCA')
+C
+	WRITE (ASC,'(F4.2)',IOSTAT=MM) FFD.FCDATA(4)
+	CALL FDV$PUT (ASC,'FCMG')
+C
+	WRITE (ASC,'(F4.2)',IOSTAT=MM) FFD.FCDATA(5)
+	CALL FDV$PUT (ASC,'FCMN')
+C
+	WRITE (ASC,'(F6.2)',IOSTAT=MM) FFD.FCDATA(6)
+	CALL FDV$PUT (ASC,'FC270')
+C
+C******************************************************************************
+C		SECTION TO READ IN SCREEN DISPLAY      
+C******************************************************************************
+222	IF (IH .EQ. 1) THEN                            
+
+C******************************************************************************
+C			first half of shift
+C******************************************************************************
+C
+C
+		NNPASS=0
+6211		CALL FDV$SPON()
+	CALL FDV$PUTL ('                                           ')
+621		CALL FDV$GETAL (MAP1.SC,LX,'COMP2',1)
+C
+		IF ((MAP1.CHT .EQ. 'N').OR.(MAP1.CHT .EQ. 'n')) then
+2829			map1.cht=' '
+			CALL FDV$PUT (' ','R2')
+			GO TO 621
+		else IF ((MAP1.CHT .eq. 'A').OR.(MAP1.CHT .eq. 'a')) then
+			CALL FDV$PUT (' ','R2')
+			GO TO 99
+		else IF ((MAP1.CHT .EQ. 'Y').OR.(MAP1.CHT .EQ. 'y')) then
+			CALL FDV$PUT (' ','R2')
+			go to 991
+		ELSE
+		CALL FDV$GET (ASC,LX,'R2')
+C
+		IF ((ASC(1:1) .EQ. 'N').OR.(ASC(1:1) .EQ. 'n')) then
+			ASC(1:1)=' '
+			CALL FDV$PUT (' ','R2')
+			GO TO 621
+		else IF ((ASC(1:1) .eq. 'A').OR.(ASC(1:1) .eq. 'a')) then
+			CALL FDV$PUT (' ','R2')
+			GO TO 99
+		else IF ((ASC(1:1) .EQ. 'Y').OR.(ASC(1:1) .EQ. 'y')) then
+			CALL FDV$PUT (' ','R2')
+			go to 991
+		ELSE
+			GO TO 99
+		END IF
+C		
+		end if
+C
+991		READ (MAP1.L3(1),'(F5.0)') COMP2(1,IS,IH,1)
+		READ (MAP1.L3(2),'(F5.0)') COMP2(2,IS,IH,1)
+		READ (MAP1.L3(3),'(F5.0)') COMP2(3,IS,IH,1)
+		READ (MAP1.L3(4),'(F5.0)') COMP(1,IS,IH,1)
+		READ (MAP1.L3(5),'(F5.0)') COMP(2,IS,IH,1)
+
+C
+		READ (MAP1.L4(1),'(F5.0)') COMP2(1,IS,IH,2)
+		READ (MAP1.L4(2),'(F5.0)') COMP2(2,IS,IH,2)
+		READ (MAP1.L4(3),'(F5.0)') COMP2(3,IS,IH,2)
+		READ (MAP1.L4(4),'(F5.0)') COMP(1,IS,IH,2)
+		READ (MAP1.L4(5),'(F5.0)') COMP(2,IS,IH,2)
+C
+		READ (MAP1.L5(1),'(F5.0)') COMP2(1,IS,IH,3)
+		READ (MAP1.L5(2),'(F5.0)') COMP2(2,IS,IH,3)
+		READ (MAP1.L5(3),'(F5.0)') COMP2(3,IS,IH,3)
+		READ (MAP1.L5(4),'(F5.0)') COMP(1,IS,IH,3)
+		READ (MAP1.L5(5),'(F5.0)') COMP(2,IS,IH,3)
+C
+		READ (MAP1.L6(1),'(F5.0)') COMP2(1,IS,IH,4)
+		READ (MAP1.L6(2),'(F5.0)') COMP2(2,IS,IH,4)
+		READ (MAP1.L6(3),'(F5.0)') COMP2(3,IS,IH,4)
+		READ (MAP1.L6(4),'(F5.0)') COMP(1,IS,IH,4)
+		READ (MAP1.L6(5),'(F5.0)') COMP(2,IS,IH,4)
+C
+		READ (MAP1.L7(1),'(F5.0)') COMP2(1,IS,IH,5)
+		READ (MAP1.L7(2),'(F5.0)') COMP2(2,IS,IH,5)
+		READ (MAP1.L7(3),'(F5.0)') COMP2(3,IS,IH,5)
+		READ (MAP1.L7(4),'(F5.0)') COMP(1,IS,IH,5)
+		READ (MAP1.L7(5),'(F5.0)') COMP(2,IS,IH,5)
+
+
+C******************************************************************************
+C	  check if compression is within limits.
+C****************************************************************************** 
+	IBAD=0
+C
+	DO 2201 LN=1,5
+C
+	IF (COMP(1,IS,IH,LN) .LE. 0) GO TO 2201
+c
+	IF (LN .LE. 3) THEN
+		IF (COMP(1,IS,IH,LN) .LT. COLIML2) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	ELSE
+		IF (COMP(1,IS,IH,LN) .LT. COLIML3) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	END IF
+C
+C
+2201	CONTINUE
+C
+	IF (IBAD .NE. 0) THEN
+	CALL FDV$PUTL ('           A COMPRESSION IS BELOW LOW LIMIT')
+	CALL FDV$WAIT ()
+	NNPASS=1
+	GO TO 6211
+ 	END IF
+
+C******************************************************************************
+C		see if there are tons but no nos. or vice versa
+C******************************************************************************
+C
+
+	DO 8501 LN=1,5
+	IF (TONS4(IS,IH,LN) .GT. 1) THEN
+C			tons are present, see if tumbles are in range
+		IF (COMP(1,IS,IH,LN) .LE. 0) GO TO 227
+	END IF
+8501	CONTINUE
+C
+	GO TO 1617	!  everything is ok, continue
+C
+C
+227	WRITE (AALN,'(I1)') LN+2
+	LMSG='LINE '//AALN//
+	1' HAS TONS BUT BAD OR MISSING COMPRESSION OR ANALYSES'
+	CALL FDV$PUTL (LMSG)
+	GO TO 2829
+                                
+1617		GO TO 762
+
+	ELSE
+
+C******************************************************************************
+C			second half of shift
+C******************************************************************************
+c
+		NNPASS=0
+833		CALL FDV$SPON
+		CALL FDV$GETAL (MAP2.SC,LX,'COMP2',1)
+C
+C
+		IF ((MAP2.CHT .EQ. 'N').OR.(MAP2.CHT .EQ. 'n')) then
+2833			map2.cht=' '
+			GO TO 833
+		else IF ((MAP2.CHT .eq. 'A').OR.(MAP2.CHT .eq. 'a')) then
+			GO TO 99
+		else IF ((MAP2.CHT .EQ. 'Y').OR.(MAP2.CHT .EQ. 'y')) then
+			go to 992
+		ELSE
+C
+		CALL FDV$GET (ASC,LX,'R3')
+C
+		IF ((ASC(1:1) .EQ. 'N').OR.(ASC(1:1) .EQ. 'n')) then
+			ASC(1:1)=' '
+			CALL FDV$PUT (' ','R3')
+			GO TO 833
+		else IF ((ASC(1:1) .eq. 'A').OR.(ASC(1:1) .eq. 'a')) then
+			CALL FDV$PUT (' ','R3')
+			GO TO 99
+		else IF ((ASC(1:1) .EQ. 'Y').OR.(ASC(1:1) .EQ. 'y')) then
+			CALL FDV$PUT (' ','R3')
+			go to 992
+		ELSE
+			GO TO 99
+		END IF
+C		
+C
+		end if
+c
+992		CALL FDV$PUTL ('STARTING 992')
+
+		READ (MAP2.L3(1),'(F5.0)') COMP2(1,IS,IH,1)
+		READ (MAP2.L3(2),'(F5.0)') COMP2(2,IS,IH,1)
+		READ (MAP2.L3(3),'(F5.0)') COMP2(3,IS,IH,1)
+   		READ (MAP2.L3(4),'(F5.0)') COMP(1,IS,IH,1)
+		READ (MAP2.L3(5),'(F5.0)') COMP(2,IS,IH,1)
+		READ (MAP2.L3(6),'(F5.0)') SIL(IS,1)
+		READ (MAP2.L3(7),'(F5.0)') PA(IS,1)
+		READ (MAP2.L3(8),'(F5.0)') PC(IS,1)
+		READ (MAP2.L3(9),'(F5.0)') PM(IS,1)
+c
+		CALL CABSUB (CAB(1,IS,1),CAB(2,IS,1),
+	1	SIL(IS,1),PA(IS,1),PC(IS,1),PM(IS,1))
+C
+		READ (MAP2.L4(1),'(F5.0)') COMP2(1,IS,IH,2)
+		READ (MAP2.L4(2),'(F5.0)') COMP2(2,IS,IH,2)
+	   	READ (MAP2.L4(3),'(F5.0)') COMP2(3,IS,IH,2)
+		READ (MAP2.L4(4),'(F5.0)') COMP(1,IS,IH,2)
+		READ (MAP2.L4(5),'(F5.0)') COMP(2,IS,IH,2)
+		READ (MAP2.L4(6),'(F5.0)') SIL(IS,2)
+		READ (MAP2.L4(7),'(F5.0)') PA(IS,2)
+		READ (MAP2.L4(8),'(F5.0)') PC(IS,2)
+		READ (MAP2.L4(9),'(F5.0)') PM(IS,2)
+c
+		CALL CABSUB (CAB(1,IS,2),CAB(2,IS,2),
+	1	SIL(IS,2),PA(IS,2),PC(IS,2),PM(IS,2))
+C
+		READ (MAP2.L5(1),'(F5.0)') COMP2(1,IS,IH,3)
+		READ (MAP2.L5(2),'(F5.0)') COMP2(2,IS,IH,3)
+		READ (MAP2.L5(3),'(F5.0)') COMP2(3,IS,IH,3)
+		READ (MAP2.L5(4),'(F5.0)') COMP(1,IS,IH,3)
+		READ (MAP2.L5(5),'(F5.0)') COMP(2,IS,IH,3)
+		READ (MAP2.L5(6),'(F5.0)') SIL(IS,3)
+		READ (MAP2.L5(7),'(F5.0)') PA(IS,3)
+		READ (MAP2.L5(8),'(F5.0)') PC(IS,3)
+		READ (MAP2.L5(9),'(F5.0)') PM(IS,3)
+c
+		CALL CABSUB (CAB(1,IS,3),CAB(2,IS,3),
+	1	SIL(IS,3),PA(IS,3),PC(IS,3),PM(IS,3))
+C
+		READ (MAP2.L6(1),'(F5.0)') COMP2(1,IS,IH,4)
+		READ (MAP2.L6(2),'(F5.0)') COMP2(2,IS,IH,4)
+		READ (MAP2.L6(3),'(F5.0)') COMP2(3,IS,IH,4)
+		READ (MAP2.L6(4),'(F5.0)') COMP(1,IS,IH,4)
+		READ (MAP2.L6(5),'(F5.0)') COMP(2,IS,IH,4)
+		READ (MAP2.L6(6),'(F5.0)') SIL(IS,4)
+		READ (MAP2.L6(7),'(F5.0)') PA(IS,4)
+		READ (MAP2.L6(8),'(F5.0)') PC(IS,4)
+		READ (MAP2.L6(9),'(F5.0)') PM(IS,4)
+c
+		CALL CABSUB (CAB(1,IS,4),CAB(2,IS,4),
+	1	SIL(IS,4),PA(IS,4),PC(IS,4),PM(IS,4))
+C
+		READ (MAP2.L7(1),'(F5.0)') COMP2(1,IS,IH,5)
+		READ (MAP2.L7(2),'(F5.0)') COMP2(2,IS,IH,5)
+		READ (MAP2.L7(3),'(F5.0)') COMP2(3,IS,IH,5)
+		READ (MAP2.L7(4),'(F5.0)') COMP(1,IS,IH,5)
+		READ (MAP2.L7(5),'(F5.0)') COMP(2,IS,IH,5)
+		READ (MAP2.L7(6),'(F5.0)') SIL(IS,5)
+		READ (MAP2.L7(7),'(F5.0)') PA(IS,5)
+		READ (MAP2.L7(8),'(F5.0)') PC(IS,5)
+		READ (MAP2.L7(9),'(F5.0)') PM(IS,5)
+C
+		CALL CABSUB (CAB(1,IS,5),CAB(2,IS,5),
+	1	SIL(IS,5),PA(IS,5),PC(IS,5),PM(IS,5))
+C
+		READ (MAP2.F2(1),'(F5.0)') FILT2(1,IS)
+		READ (MAP2.F2(2),'(F5.0)') FILT2(2,IS)
+		READ (MAP2.F2(3),'(F5.0)') FILT2(3,IS)
+		READ (MAP2.F2(4),'(F5.0)') FAL(1,IS)
+		READ (MAP2.F2(5),'(F5.0)') FCA(1,IS)
+		READ (MAP2.F2(6),'(F5.0)') FMG(1,IS)
+C
+C
+		READ (MAP2.F3(1),'(F5.0)') FILT3(1,IS)
+		READ (MAP2.F3(2),'(F5.0)') FILT3(2,IS)
+		READ (MAP2.F3(3),'(F5.0)') FILT3(3,IS)
+		READ (MAP2.F3(4),'(F5.0)') FAL(2,IS)
+		READ (MAP2.F3(5),'(F5.0)') FCA(2,IS)
+		READ (MAP2.F3(6),'(F5.0)') FMG(2,IS)
+C
+		READ (MAP2.FFS,'(F5.0)')FSI(1,IS)
+		READ (MAP2.FF2,'(F6.0)')FSI(2,IS)
+		CALL FDV$PUTL ('ENDING 992')
+
+C******************************************************************************
+C	  check if compression is within limits.
+C******************************************************************************
+C
+	IF (NNPASS .NE. 0) GO TO 873
+C 
+	IBAD=0
+C
+	DO 3201 LN=1,5
+C
+	IF (COMP(1,IS,IH,LN) .LE. 0) GO TO 3201
+c
+	IF (LN .LE. 3) THEN
+		IF (COMP(1,IS,IH,LN) .LT. COLIML2) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	ELSE
+		IF (COMP(1,IS,IH,LN) .LT. COLIML3) THEN
+			JJJ=5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+			IBAD=1
+		ELSE
+			JJJ=-5
+			CALL FDV$AFVA (JJJ,'COMP',LN)
+		END IF
+	END IF
+C
+C
+3201	CONTINUE
+C
+	IF (IBAD .NE. 0) THEN
+	CALL FDV$PUTL ('           A COMPRESSION IS BELOW LOW LIMIT 3201')
+	CALL FDV$WAIT ()
+	NNPASS=1
+	GO TO 833
+	END IF
+C******************************************************************************
+C		see if there are tons but no nos. or vice versa
+C******************************************************************************
+C
+	DO 8502 LN=1,5
+	IF (TONS4(IS,IH,LN) .GT. 1) THEN
+C			tons are present, see if tumbles are in range
+		IF (COMP(1,IS,IH,LN) .LE. 0) GO TO 327
+		IF (SIL(IS,LN) .LE. 0 .OR. PA(IS,LN) .LE. 0 .OR.
+	1	     PC(IS,LN) .LE. 0 .OR. PM(IS,LN) .LE. 0) GO TO 327
+	END IF
+8502	CONTINUE
+C
+	GO TO 873	!  everything is ok, continue
+C
+C
+327	WRITE (AALN,'(I1)') LN+2
+	LMSG='LINE '//AALN//
+	1' HAS TONS BUT BAD OR MISSING COMPRESSION OR ANALYSES '
+	CALL FDV$PUTL (LMSG)
+	GO TO 2833
+
+C******************************************************************************
+873	OPEN (UNIT=89,FILE='MET_P:FLOAT',RECL=20,FORM='UNFORMATTED',
+	1RECORDTYPE='FIXED',STATUS='UNKNOWN')
+C	,SHARED,USEROPEN=UFO_OPEN)
+C
+	FSAA=FSI(1,IS)    	!CONVERT TO SINGLE PRECISION
+	F2AA=FSI(2,IS)
+C
+	WRITE (89) FSAA,F2AA
+C
+	CLOSE (89)
+C******************************************************************************
+
+		READ (MAP2.STONE,'(F5.0)')FLUXG
+C******************************************************************************
+C	LOCATION TO SAVE FLOT FEED AND FLOT CONC DATA FOR R STRUKEL
+C******************************************************************************
+C
+	IF (JKL .EQ. 36) FFD.DATE=FFKEY
+C
+	READ (MAP2.FFAL, '(F4.0)') FFD.FFDATA(1)
+	READ (MAP2.FFCA, '(F4.0)') FFD.FFDATA(2)
+	READ (MAP2.FFMG, '(F4.0)') FFD.FFDATA(3)
+	READ (MAP2.FFMN, '(F4.0)') FFD.FFDATA(4)
+C
+	READ (MAP2.FCSIL,'(F5.0)') FFD.FCDATA(1)
+C
+	READ (MAP2.FCAL,'(F4.0)') FFD.FCDATA(2)
+	READ (MAP2.FCCA,'(F4.0)') FFD.FCDATA(3)
+	READ (MAP2.FCMG,'(F4.0)') FFD.FCDATA(4)
+	READ (MAP2.FCMN,'(F4.0)') FFD.FCDATA(5)
+C
+	READ (MAP2.FC270,'(F6.0)') FFD.FCDATA(6)
+C
+C
+C
+	IF (JKL .EQ. 36) THEN
+		WRITE (65) FFD
+	ELSE
+		REWRITE (65) FFD
+	END IF
+                                                                              
+C******************************************************************************
+	END IF
+C
+762	CONTINUE
+C
+17	IF (NEWNEW .EQ. 1) THEN
+C
+	WRITE (11) KD,DAT,IS,IH,SCREEN,COMP,CAB,SIL,FILT2,
+	1			    FILT3,BL2,BL3,FLUXG,FCA,FMG,FAL,FSI,   
+	1			    PA,PC,PM,S4,H4,SCWT,TONS4,GHRS,COMP2
+C
+	ELSE
+C
+	IF (NOPREV .EQ. 0) THEN
+		IS=ISSAVE
+		IH=IHSAVE
+	END IF
+C
+	REWRITE (11) KD,DAT,IS,IH,SCREEN,COMP,CAB,SIL,FILT2,
+	1			    FILT3,BL2,BL3,FLUXG,FCA,FMG,FAL,FSI,   
+	1			    PA,PC,PM,S4,H4,SCWT,TONS4,GHRS,COMP2
+C
+C
+	END IF
+C
+	CLOSE (11)
+C
+	STATUS=SYS$CREPRC (,'SYS$SYSTEM:LOGINOUT.EXE',
+	1	'USER_D:[METREP.LAB45]ORACLE_SPAWN.COM','NL:','NL:',
+	1	,,,,MEM,,%VAL(PRC$M_DETACH.OR.PRC$M_NOACNT))
+c
+C	   write back PRESENT date,shift, half
+C
+	IF (NOPREV .EQ. 1)   THEN
+		WRITE(10,55,REC=1)KY6,LS,LH
+		close (10)
+C	
+	CALL FDV$LCLOS
+	CALL FDV$SPADA (0)
+	CALL FDV$DEL ('LINEDATA')
+	CALL FDV$DWKSP (%DESCR(WORKSPACE))
+	CALL FDV$DTERM(%DESCR(TCA))
+
+		OPEN (UNIT=29,FILE='MET_P:ATTINFO.DAT',FORM='UNFORMATTED',
+	1	STATUS='UNKNOWN')
+		IFIL=1
+		IREC=1		!tells attfc which day you want
+       		WRITE (29) IFIL,IREC
+		CLOSE (29)
+C
+	close (11)	
+C               
+C******************************************************************************
+	
+	CALL LIB$SPAWN('RUN USER_D:[METREP.LAB45]AT3_POTTS716',,,flag)
+	CALL LIB$WAIT (30.)
+C
+	CALL LIB$SPAWN('RUN USER_D:[METREP.LAB45]AT3',,,flag)
+	STOP
+	END IF
+C
+99	CALL FDV$LCLOS
+	CALL FDV$SPADA (0)
+	CALL FDV$DEL ('LINEDATA')
+	CALL FDV$DWKSP (%DESCR(WORKSPACE))
+	CALL FDV$DTERM(%DESCR(TCA))
+C
+	close (11)
+C
+C
+669	STOP
+C
+	END
+	SUBROUTINE CABSUB (C1,C2,S,A,C,XM)
+C
+	C1=0
+	C2=0
+C
+	IF ((S .EQ. 0).OR.(A.EQ.0).OR.(C.EQ.0).OR.(XM.EQ.0)) RETURN
+		C1=C/XM
+
+		IF (C1 .GT. 9.9) THEN
+		C1=0
+	CALL FDV$PUTL ('THE CA OR MG IS TOO HIGH, BETTER CHECK IT')
+		RETURN
+		END IF
+C
+		C2=(C+XM)/(A+S)
+C
+C
+	RETURN
+	END
