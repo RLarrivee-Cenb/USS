@@ -1,0 +1,15 @@
+C-----------------------------------------------------------
+C
+C		DIGCOM.FOR
+C
+C-----------------------------------------------------------
+C
+C	THIS FORTRAN PROGRAM DEFINES A COMMON AREA THAT WILL
+C	CONTAIN THE DIGITAL STATUS OF EVERY POINT IN SYSTEM
+C	AND WHETHER OR NOT IT JUST CHANGED STATE.
+	INTEGER*4 CXSTS(100),CXALRM(100)
+	COMMON /CONTACTS/CXSTS, /CXALARM/CXALRM
+	END
+C
+C
+C
